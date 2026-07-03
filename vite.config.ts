@@ -7,7 +7,9 @@ import { defineConfig } from 'vite'
 
 const chunk = {
   0: ['react', 'react-dom'],
-
+  1: ["monaco-editor", "monaco-editor", "yaml", "@monaco-editor/react"],
+  10: ["antd", "@ant-design/icons"],
+  11: ["@ant-design/plots", "@antv/g2", "@antv/component"],
   2: [
     'ofetch',
     '@tanstack/react-query',
@@ -82,6 +84,12 @@ export default defineConfig({
           const moduleInfo = getModuleInfo(id)
           if (moduleInfo?.dynamicImporters?.length && moduleInfo?.importers?.length) {
             return null
+          }
+
+          // 将 Vite 内部的 preload helper 放到独立 chunk，
+          // 避免它被 Rollup 合入 monaco 等大 vendor chunk，导致首页加载时就拉取整个编辑器
+          if (id.includes("preload-helper")) {
+            return "vendor/preload"
           }
 
           // if (id.includes("/node_modules/rc-")) {
