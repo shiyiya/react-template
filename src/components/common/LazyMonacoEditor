@@ -1,0 +1,63 @@
+import { lazy, Suspense } from "react"
+
+const LazyEditor = lazy(async () => {
+  const [{ Editor, loader }, monaco] = await Promise.all([
+    import("@monaco-editor/react"),
+    import("monaco-editor"),
+  ])
+  loader.config({ monaco })
+  return { default: Editor }
+})
+
+const LazyDiffEditor = lazy(async () => {
+  const [{ DiffEditor, loader }, monaco] = await Promise.all([
+    import("@monaco-editor/react"),
+    import("monaco-editor"),
+  ])
+  loader.config({ monaco })
+  return { default: DiffEditor }
+})
+
+const defaultLoading = <div className="flex h-full items-center justify-center">loading...</div>
+
+export interface MonacoEditorProps {
+  height?: string | number
+  width?: string | number
+  language?: string
+  theme?: string
+  value?: string
+  defaultValue?: string
+  path?: string
+  options?: object
+  onMount?: (editor: any, monacoInstance: any) => void
+  onChange?: (value: string | undefined, event: any) => void
+  loading?: React.ReactNode
+}
+
+export interface MonacoDiffEditorProps {
+  height?: string | number
+  width?: string | number
+  language?: string
+  theme?: string
+  original?: string
+  modified?: string
+  options?: object
+  onMount?: (editor: any, monacoInstance: any) => void
+  loading?: React.ReactNode
+}
+
+export const Editor = ({ loading, ...props }: MonacoEditorProps) => {
+  return (
+    <Suspense fallback={loading || defaultLoading}>
+      <LazyEditor {...props} />
+    </Suspense>
+  )
+}
+
+export const DiffEditor = ({ loading, ...props }: MonacoDiffEditorProps) => {
+  return (
+    <Suspense fallback={loading || defaultLoading}>
+      <LazyDiffEditor {...props} />
+    </Suspense>
+  )
+}
