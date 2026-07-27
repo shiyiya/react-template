@@ -66,6 +66,7 @@ export default defineConfig({
     target: 'ES2022',
     rollupOptions: {
       output: {
+        experimentalMinChunkSize: 10 * 1024,
         assetFileNames: 'assets/[name].[hash:6][extname]',
         chunkFileNames: (chunkInfo) => {
           return chunkInfo.name.startsWith('vender/') ? '[name]-[hash].js' : 'assets/[name]-[hash].js'
