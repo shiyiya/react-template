@@ -15,6 +15,9 @@ interface RouteTreeItem {
   layoutLoader?: () => Promise<{ default: React.ComponentType<any> }>
 }
 
+// (image) 形式的目录为分组目录，不参与 URL 路径
+const isGroupSegment = (segment: string) => /^\(.+\)$/.test(segment)
+
 const LazyLoadedComponent = (loader: () => Promise<{ default: React.ComponentType<any> }>) => {
   const LazyComp = React.lazy(loader)
   return (
@@ -33,6 +36,7 @@ export function buildGlobRoutes(globTree: GlobTree, basePath: string = "./pages"
     const segments = normalizedPath.split("/").filter(Boolean)
 
     let currentNode = rootRouteTree
+
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i]
 
@@ -63,6 +67,7 @@ export function buildGlobRoutes(globTree: GlobTree, basePath: string = "./pages"
     const routes: RouteObject[] = []
 
     const childrenNodes = Array.from(node.children.values())
+
     childrenNodes.sort((a, b) => {
       const isADynamic = a.segment.startsWith("[")
       const isBDynamic = b.segment.startsWith("[")
@@ -82,6 +87,13 @@ export function buildGlobRoutes(globTree: GlobTree, basePath: string = "./pages"
     }
 
     for (const childNode of childrenNodes) {
+      // 分组目录 (image) 不生成路径段，直接把子路由提升到当前层级
+      // 例如 /app/(image)/dockerfile -> /app/dockerfile
+      if (isGroupSegment(childNode.segment)) {
+        routes.push(...buildChildrenRoutes(childNode))
+        continue
+      }
+
       // ([id] -> :id)
       const path = childNode.segment.replace(/\[(\w+)\]/g, ":$1")
 
@@ -106,8 +118,10 @@ export function buildGlobRoutes(globTree: GlobTree, basePath: string = "./pages"
       }
       return [layoutRoute]
     }
+
     return routes
   }
+
   return buildChildrenRoutes(rootRouteTree)
 }
 
