@@ -1,27 +1,68 @@
-import React, { Suspense } from "react"
+import NProgress from "nprogress"
+import "nprogress/nprogress.css"
+import React, { Suspense, useEffect } from "react"
 import type { RouteObject } from "react-router"
 
-type GlobTree = Record<string, () => Promise<{ default: React.ComponentType<any> }>>
+// 基于文件系统的路由约定：
+// pages/
+// ├── index.tsx                  -> /
+// ├── about.tsx                  -> /about
+// ├── blog/
+// │   └── [slug]/
+// │       ├── index.tsx          -> /blog/:slug
+// │       └── comments.tsx       -> /blog/:slug/comments
+// ├── dashboard/
+// │   ├── _layout.tsx            -> /dashboard 及其子路由的布局
+// │   ├── index.tsx              -> /dashboard
+// │   └── settings.tsx           -> /dashboard/settings
+// ├── app/
+// │   └── (image)/               -> 分组目录，不参与 URL
+// │       └── dockerfile.tsx     -> /app/dockerfile
+// ├── users/
+// │   └── [id].tsx               -> /users/:id
+// └── docs/
+//     └── [...slug].tsx          -> /docs/* (catch-all)
+
+type PageLoader = () => Promise<{ default: React.ComponentType<any> }>
+
+type GlobTree = Record<string, PageLoader>
 
 interface RouteTreeItem {
   segment: string
 
   // 如果此项是页面文件 (非 _layout, 非 index)，则为其组件的懒加载器
-  pageLoader?: () => Promise<{ default: React.ComponentType<any> }>
+  pageLoader?: PageLoader
 
   children: Map<string, RouteTreeItem>
 
-  indexLoader?: () => Promise<{ default: React.ComponentType<any> }>
-  layoutLoader?: () => Promise<{ default: React.ComponentType<any> }>
+  indexLoader?: PageLoader
+  layoutLoader?: PageLoader
 }
 
 // (image) 形式的目录为分组目录，不参与 URL 路径
 const isGroupSegment = (segment: string) => /^\(.+\)$/.test(segment)
 
-const LazyLoadedComponent = (loader: () => Promise<{ default: React.ComponentType<any> }>) => {
+// 文件路径段 -> 路由路径段（[...slug] -> *，[id] -> :id）
+const segmentToPath = (segment: string) =>
+  segment.replace(/\[\.{3}\w+\]/g, "*").replace(/\[(\w+)\]/g, ":$1")
+
+// 路由懒加载期间显示顶部进度条：挂载时开始，加载完成（卸载）时结束
+NProgress.configure({ showSpinner: false })
+
+const RouteProgress = () => {
+  useEffect(() => {
+    NProgress.start()
+    return () => {
+      NProgress.done()
+    }
+  }, [])
+  return null
+}
+
+const LazyLoadedComponent = (loader: PageLoader) => {
   const LazyComp = React.lazy(loader)
   return (
-    <Suspense>
+    <Suspense fallback={<RouteProgress />}>
       <LazyComp />
     </Suspense>
   )
@@ -32,7 +73,9 @@ export function buildGlobRoutes(globTree: GlobTree, basePath: string = "./pages"
 
   for (const filePath in globTree) {
     const loader = globTree[filePath]
-    const normalizedPath = filePath.replace(basePath, "").replace(/\.tsx$/, "")
+    const normalizedPath = (
+      filePath.startsWith(basePath) ? filePath.slice(basePath.length) : filePath
+    ).replace(/\.tsx$/, "")
     const segments = normalizedPath.split("/").filter(Boolean)
 
     let currentNode = rootRouteTree
@@ -94,8 +137,7 @@ export function buildGlobRoutes(globTree: GlobTree, basePath: string = "./pages"
         continue
       }
 
-      // ([id] -> :id)
-      const path = childNode.segment.replace(/\[(\w+)\]/g, ":$1")
+      const path = segmentToPath(childNode.segment)
 
       const route: RouteObject = {
         path: path,
@@ -108,6 +150,18 @@ export function buildGlobRoutes(globTree: GlobTree, basePath: string = "./pages"
       }
 
       routes.push(route)
+    }
+
+    // 分组目录拍平后可能产生同名路由（如 (a)/foo.tsx 与 (b)/foo.tsx），开发期警告
+    if (import.meta.env.DEV) {
+      const seen = new Set<string>()
+      for (const route of routes) {
+        const key = route.index ? "<index>" : (route.path ?? "")
+        if (seen.has(key)) {
+          console.warn(`[route-builder] 检测到重复路由 "${key}"，请检查分组目录或同名文件冲突`)
+        }
+        seen.add(key)
+      }
     }
 
     if (node.layoutLoader) {
@@ -124,22 +178,3 @@ export function buildGlobRoutes(globTree: GlobTree, basePath: string = "./pages"
 
   return buildChildrenRoutes(rootRouteTree)
 }
-
-// src/
-// ├── App.tsx
-// ├── utils/
-// │   └── buildGlobRoutes.tsx
-// └── pages/
-//     ├── index.tsx                 // 对应 /
-//     ├── about.tsx                 // 对应 /about
-//     ├── blog/
-//     │   ├── [slug]/
-//     │   │   ├── index.tsx         // 对应 /blog/:slug
-//     │   │   └── comments.tsx      // 对应 /blog/:slug/comments
-//     └── dashboard/
-//         ├── _layout.tsx           // 对应 /dashboard 的布局
-//         ├── index.tsx             // 对应 /dashboard
-//         ├── settings.tsx          // 对应 /dashboard/settings
-//     └── users/
-//         ├── index.tsx             // 对应 /users
-//         └── [id].tsx              // 对应 /users/:id
